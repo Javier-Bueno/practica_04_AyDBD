@@ -33,7 +33,7 @@ CREATE TABLE Zona (
 
     PRIMARY KEY (id_vivero, id_zona),
 
-    CONSTRAINT fk_id_vivero_zona FOREIGN KEY (id_vivero) REFERENCES Vivero(id_vivero) ON DELETE CASCADE,
+    CONSTRAINT fk_id_vivero_zona FOREIGN KEY (id_vivero) REFERENCES Vivero(id_vivero) ON DELETE CASCADE ON UPDATE CASCADE,
 
     CONSTRAINT chk_rango_latitud_zona CHECK(latitud BETWEEN -90 AND 90),
     CONSTRAINT chk_rango_longitud_zona CHECK(longitud BETWEEN -180 AND 180)    
@@ -55,8 +55,8 @@ CREATE TABLE Almacena (
 
     PRIMARY KEY (id_vivero, id_zona, id_producto),
 
-    CONSTRAINT fk_id_zona_almacena FOREIGN KEY (id_vivero, id_zona) REFERENCES Zona(id_vivero, id_zona) ON DELETE CASCADE,
-    CONSTRAINT fk_id_producto_almacena FOREIGN KEY (id_producto) REFERENCES Producto(id_producto) ON DELETE CASCADE
+    CONSTRAINT fk_id_zona_almacena FOREIGN KEY (id_vivero, id_zona) REFERENCES Zona(id_vivero, id_zona) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_id_producto_almacena FOREIGN KEY (id_producto) REFERENCES Producto(id_producto) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 
@@ -82,18 +82,18 @@ CREATE TABLE Afiliado (
     id_cliente INTEGER PRIMARY KEY,
     fecha_ingreso DATE NOT NULL,
     
-    CONSTRAINT fk_id_cliente_afiliado FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente) ON DELETE CASCADE
+    CONSTRAINT fk_id_cliente_afiliado FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente) ON DELETE CASCADE ON UPDATE CASCADE
 );
 -- Actualmente, Afiliado no comprueba que el usuario sea del tipo afiliado, esto se solucionará con un trigger
 
---8. Tabla Bonificación
-CREATE TABLE Bonificación (
+--8. Tabla Bonificacion
+CREATE TABLE Bonificacion (
     id_cliente INTEGER NOT NULL,
     bonificacion TEXT NOT NULL,
 
     PRIMARY KEY (id_cliente, bonificacion),
     
-    CONSTRAINT fk_id_afiliado_bonificacion FOREIGN KEY (id_cliente) REFERENCES Afiliado(id_cliente) ON DELETE CASCADE
+    CONSTRAINT fk_id_afiliado_bonificacion FOREIGN KEY (id_cliente) REFERENCES Afiliado(id_cliente) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- 9. Tabla Pedido
@@ -103,8 +103,8 @@ CREATE TABLE Pedido (
     id_cliente INTEGER NOT NULL,
     id_empleado INTEGER NOT NULL,
     
-    CONSTRAINT fk_id_cliente_pedido FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente),
-    CONSTRAINT fk_id_empleado_pedido FOREIGN KEY (id_empleado) REFERENCES Empleado(id_empleado)
+    CONSTRAINT fk_id_cliente_pedido FOREIGN KEY (id_cliente) REFERENCES Cliente(id_cliente) ON UPDATE CASCADE,
+    CONSTRAINT fk_id_empleado_pedido FOREIGN KEY (id_empleado) REFERENCES Empleado(id_empleado) ON UPDATE CASCADE
 );
 
 -- 10. Tabla Contiene
@@ -115,8 +115,8 @@ CREATE TABLE Contiene (
     
     PRIMARY KEY (id_producto, id_pedido),
 
-    CONSTRAINT fk_id_producto_contiene FOREIGN KEY (id_producto) REFERENCES Producto(id_producto),
-    CONSTRAINT fk_id_pedido_contiene FOREIGN KEY (id_pedido) REFERENCES Pedido(id_pedido),
+    CONSTRAINT fk_id_producto_contiene FOREIGN KEY (id_producto) REFERENCES Producto(id_producto) ON UPDATE CASCADE,
+    CONSTRAINT fk_id_pedido_contiene FOREIGN KEY (id_pedido) REFERENCES Pedido(id_pedido) ON UPDATE CASCADE,
 
     CONSTRAINT chk_cantidad CHECK (cantidad > 0)
 );
@@ -135,16 +135,29 @@ CREATE TABLE Realiza (
     id_zona INTEGER NOT NULL,
     fecha_inicio DATE NOT NULL,
     fecha_fin DATE,
-    puesto VARCHAR(100) NOT NULL,  -- Aunque podríamos haber quedado otra relación
+    puesto VARCHAR(100) NOT NULL,  -- Aunque podríamos haber creado otra relación
 
     PRIMARY KEY (id_empleado, id_tarea, id_vivero, id_zona, fecha_inicio),
 
-    CONSTRAINT fk_id_empleado_realiza FOREIGN KEY (id_empleado) REFERENCES Empleado(id_empleado),
-    CONSTRAINT fk_id_tarea_realiza FOREIGN KEY (id_tarea) REFERENCES Tarea (id_tarea),
-    CONSTRAINT fk_id_zona_realiza FOREIGN KEY (id_vivero, id_zona) REFERENCES Zona(id_vivero, id_zona),
+    CONSTRAINT fk_id_empleado_realiza FOREIGN KEY (id_empleado) REFERENCES Empleado(id_empleado) ON UPDATE CASCADE,
+    CONSTRAINT fk_id_tarea_realiza FOREIGN KEY (id_tarea) REFERENCES Tarea (id_tarea) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_id_zona_realiza FOREIGN KEY (id_vivero, id_zona) REFERENCES Zona(id_vivero, id_zona) ON DELETE CASCADE ON UPDATE CASCADE,
 
     CONSTRAINT chk_fecha CHECK (fecha_fin IS NULL OR fecha_fin >= fecha_inicio)
 );
+
+-- Para el atributo derivado del Afiliado, que cuenta la cantidad de pedidos, debemos hacer una vista
+CREATE VIEW Vista_Afiliado AS
+SELECT a.id_cliente, c.nombre, a.fecha_ingreso,
+    (
+        SELECT COUNT(*) 
+        FROM Pedido p 
+        WHERE p.id_cliente = a.id_cliente
+    ) AS cantidad_pedidos
+FROM 
+    Afiliado a
+JOIN 
+    Cliente c ON a.id_cliente = c.id_cliente;
 
 -- Inserción de datos para las tablas:
 
@@ -194,6 +207,7 @@ INSERT INTO Cliente (nombre, correo, tipo) VALUES
     ('Jardines del Norte S.L.', 'contacto@jardinesnorte.com', 'Afiliado'),
     ('Pedro González', 'pedro.glez@email.com', 'Afiliado'),
     ('Hotel Miramar', 'compras@hotelmiramar.es', 'Afiliado'),
+    ('Ayuntamiento Verde', 'parques@ayto.es', 'Afiliado'),
     ('Beatriz Alemán', 'b.aleman@email.com', NULL); -- no afiliado
 
 -- 7. Afiliado
@@ -201,12 +215,13 @@ INSERT INTO Afiliado (id_cliente, fecha_ingreso) VALUES
     (1, '2022-01-15'),
     (2, '2022-06-20'),
     (3, '2023-03-10'),
-    (4, '2023-11-01');
+    (4, '2023-11-01'),
+    (5, '2024-01-10');
 
 -- 8. Bonificación
-INSERT INTO Bonificación (id_cliente, bonificacion) VALUES
+INSERT INTO Bonificacion (id_cliente, bonificacion) VALUES
     (1, 'Descuento del 10% en plantas autóctonas'),
-    (1, 'Envío gratuito en compras superiores a 50€'), -- Múltiple bonificación para cliente 1
+    (1, 'Envío gratuito en compras superiores a 50€'), -- Múltiple o para cliente 1
     (2, 'Tarifa especial Mayorista 15%'),
     (3, 'Cupón bienvenida 5€'),
     (4, 'Mantenimiento de jardinería gratuito 1 mes');
@@ -274,14 +289,58 @@ INSERT INTO Realiza (id_empleado, id_tarea, id_vivero, id_zona, fecha_inicio, fe
 
 -- Operaciones de borrado
 
--- 1. Borrado simple
+-- Primero preparamos nuevas entradas en las tablas para borrarlas y no tocar las originales.
+
+-- Datos para el Ejemplo 1
+INSERT INTO Pedido (id_pedido, fecha, id_cliente, id_empleado) 
+VALUES (999, '2024-12-31', 1, 1);
+
+-- Datos para el Ejemplo 2 (Vivero y sus dependencias para borrado en cascada)
+INSERT INTO Vivero (id_vivero, nombre, longitud, latitud) 
+VALUES (999, 'Vivero Temporal de Prueba', 0.000000, 0.000000);
+INSERT INTO Zona (id_vivero, id_zona, nombre, latitud, longitud) 
+VALUES (999, 1, 'Zona Temporal', 0.000000, 0.000000);
+INSERT INTO Almacena (id_vivero, id_zona, id_producto, cantidad) 
+VALUES (999, 1, 1, 50);
+
+-- Datos para el Ejemplo 3 (Empleado y sus dependencias)
+INSERT INTO Empleado (id_empleado, nombre, dni, apellido_1, apellido_2) 
+VALUES (999, 'Empleado', '99999999X', 'De', 'Prueba');
+INSERT INTO Pedido (id_pedido, fecha, id_cliente, id_empleado) 
+VALUES (998, '2024-12-31', 1, 999);
+INSERT INTO Contiene (id_producto, id_pedido, cantidad) 
+VALUES (1, 998, 5);
+INSERT INTO Realiza (id_empleado, id_tarea, id_vivero, id_zona, fecha_inicio, fecha_fin, puesto) 
+VALUES (999, 1, 1, 1, '2024-12-31', '2024-12-31', 'Puesto Temporal');
+
+-- A continuación realizamos el borrado:
+
+-- Ejemplo 1: Borrado simple (Sin restricciones)
 DELETE FROM Pedido 
-WHERE id_pedido = 5;
+WHERE id_pedido = 999;
 
--- 2. Borrado en cascada
+
+-- Ejemplo 2: Borrado en Cascada (ON DELETE CASCADE)
 DELETE FROM Vivero 
-WHERE id_vivero = 1;
+WHERE id_vivero = 999;
 
--- 3. Borrado con clave foránea dependiente
+
+-- Ejemplo 3: Borrado manual.
+-- Queremos borrar al Empleado 999, pero tiene datos en 'Realiza' y 'Pedido'.
+-- Borramos de abajo hacia arriba para respetar la integridad referencial:
+
+-- Eliminamos su historial en la tabla 'Realiza'
+DELETE FROM Realiza 
+WHERE id_empleado = 999;
+
+-- Vaciamos los productos de sus pedidos en 'Contiene'
+DELETE FROM Contiene 
+WHERE id_pedido IN (SELECT id_pedido FROM Pedido WHERE id_empleado = 999);
+
+-- Borramos los registros de 'Pedido' gestionados por él
+DELETE FROM Pedido 
+WHERE id_empleado = 999;
+
+-- Finalmente, ya podemos borrar al Empleado sin que de error
 DELETE FROM Empleado 
-WHERE id_empleado = 1;
+WHERE id_empleado = 999;
